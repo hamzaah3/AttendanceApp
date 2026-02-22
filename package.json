@@ -7,7 +7,8 @@
     "start:clear": "expo start --clear",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "vercel-build": "expo export --output-dir=dist"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
