@@ -8,6 +8,8 @@ interface AuthState {
   firebaseUser: FirebaseUser | null;
   dbUser: User | null;
   loading: boolean;
+  /** Set when Firebase auth succeeded but loading/creating DB user failed (e.g. API 404). */
+  apiError: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -16,38 +18,50 @@ interface AuthContextValue extends AuthState {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  clearApiError: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>({ firebaseUser: null, dbUser: null, loading: true });
+  const [state, setState] = useState<AuthState>({ firebaseUser: null, dbUser: null, loading: true, apiError: null });
 
   const refreshUser = useCallback(async () => {
     const uid = state.firebaseUser?.uid;
     if (!uid) return;
-    const dbUser = await getUserByFirebaseUid(uid);
-    setState((s) => ({ ...s, dbUser }));
+    setState((s) => ({ ...s, apiError: null }));
+    try {
+      const dbUser = await getUserByFirebaseUid(uid);
+      setState((s) => ({ ...s, dbUser, apiError: null }));
+    } catch (e) {
+      setState((s) => ({ ...s, apiError: e instanceof Error ? e.message : 'Failed to load profile' }));
+    }
   }, [state.firebaseUser?.uid]);
 
   useEffect(() => {
     const unsub = subscribeAuth(async (firebaseUser) => {
       if (!firebaseUser) {
-        setState({ firebaseUser: null, dbUser: null, loading: false });
+        setState({ firebaseUser: null, dbUser: null, loading: false, apiError: null });
         return;
       }
-      let dbUser = await getUserByFirebaseUid(firebaseUser.uid);
-      if (!dbUser) {
-        dbUser = await createOrUpdateUser({
-          firebaseUid: firebaseUser.uid,
-          name: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? 'User',
-          email: firebaseUser.email ?? '',
-          committedHoursPerDay: 8,
-          weeklyOffDays: ['Saturday', 'Sunday'],
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
+      setState((s) => ({ ...s, apiError: null }));
+      try {
+        let dbUser = await getUserByFirebaseUid(firebaseUser.uid);
+        if (!dbUser) {
+          dbUser = await createOrUpdateUser({
+            firebaseUid: firebaseUser.uid,
+            name: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? 'User',
+            email: firebaseUser.email ?? '',
+            committedHoursPerDay: 8,
+            weeklyOffDays: ['Saturday', 'Sunday'],
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          });
+        }
+        setState({ firebaseUser, dbUser, loading: false, apiError: null });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Server unavailable';
+        setState({ firebaseUser, dbUser: null, loading: false, apiError: msg });
       }
-      setState({ firebaseUser, dbUser, loading: false });
     });
     return () => unsub();
   }, []);
@@ -70,7 +84,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await firebaseSignOut();
-    setState({ firebaseUser: null, dbUser: null, loading: false });
+    setState({ firebaseUser: null, dbUser: null, loading: false, apiError: null });
+  }, []);
+
+  const clearApiError = useCallback(() => {
+    setState((s) => ({ ...s, apiError: null }));
   }, []);
 
   const handleResetPassword = useCallback(async (email: string) => {
@@ -84,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     resetPassword: handleResetPassword,
     refreshUser,
+    clearApiError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

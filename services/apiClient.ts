@@ -1,6 +1,6 @@
 /**
- * Client for Expo API routes (/api/users, /api/attendance, etc.).
- * Used when EXPO_PUBLIC_API_ORIGIN is set (backend-in-Expo).
+ * Client for the separate Express backend (/api/users, /api/attendance, etc.).
+ * Set EXPO_PUBLIC_API_ORIGIN to your backend URL (e.g. https://your-api.vercel.app).
  * On device/emulator, localhost is replaced with the dev server host so requests reach your machine.
  */
 import { Platform } from 'react-native';
@@ -34,15 +34,33 @@ export function isApiRoutesConfigured(): boolean {
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const base = getApiBaseUrl();
   const url = `${base}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Network error';
+    throw new Error(`API request failed: ${msg}`);
   }
-  return res.json() as Promise<T>;
+  if (!res.ok) {
+    let errMsg = `API error ${res.status}`;
+    try {
+      const text = await res.text();
+      const parsed = text ? (JSON.parse(text) as { error?: string }) : null;
+      if (parsed?.error) errMsg = parsed.error;
+      else if (text && text.length < 200) errMsg = text;
+    } catch {
+      // use default errMsg
+    }
+    throw new Error(errMsg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new Error('Invalid JSON response from API');
+  }
 }
 
 function withUserId(path: string, userId: string): string {

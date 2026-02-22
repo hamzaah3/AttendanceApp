@@ -1,6 +1,6 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Image } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
@@ -39,6 +39,7 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: c.background }]}>
       <View style={styles.inner}>
+        <Image source={require('@/assets/images/logo.png')} style={styles.logo} resizeMode="contain" />
         <Text style={[styles.title, { color: c.text }]}>Create account</Text>
         <Text style={[styles.subtitle, { color: c.muted }]}>Sign up to start tracking attendance</Text>
         <TextInput
@@ -79,6 +80,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   inner: { flex: 1, justifyContent: 'center', padding: 24 },
+  logo: { width: 120, height: 120, alignSelf: 'center', marginBottom: 24 },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
   subtitle: { fontSize: 16, marginBottom: 32 },
   input: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16, fontSize: 16 },
