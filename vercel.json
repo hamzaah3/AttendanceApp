@@ -7,15 +7,15 @@
   "rewrites": [
     { "source": "/_expo/:path*", "destination": "/client/_expo/:path*" },
     { "source": "/assets/:path*", "destination": "/client/assets/:path*" },
-    { "source": "/", "destination": "/server/(tabs)/index.html" },
+    { "source": "/", "destination": "/server/%28tabs%29/index.html" },
     { "source": "/login", "destination": "/server/login.html" },
     { "source": "/register", "destination": "/server/register.html" },
     { "source": "/forgot-password", "destination": "/server/forgot-password.html" },
     { "source": "/modal", "destination": "/server/modal.html" },
     { "source": "/_sitemap", "destination": "/server/_sitemap.html" },
-    { "source": "/reports", "destination": "/server/(tabs)/reports.html" },
-    { "source": "/settings", "destination": "/server/(tabs)/settings.html" },
-    { "source": "/manual-entry", "destination": "/server/(tabs)/manual-entry.html" },
+    { "source": "/reports", "destination": "/server/%28tabs%29/reports.html" },
+    { "source": "/settings", "destination": "/server/%28tabs%29/settings.html" },
+    { "source": "/manual-entry", "destination": "/server/%28tabs%29/manual-entry.html" },
     {
       "source": "/((?!api/|client/|server/|_expo/|assets/).*)",
       "destination": "/server/+not-found.html"
