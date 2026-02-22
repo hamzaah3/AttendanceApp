@@ -50,7 +50,7 @@ export default function ForgotPasswordScreen() {
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Send reset link</Text>}
         </TouchableOpacity>
         <Link href="/login" asChild>
-          <Text style={[styles.footer, { color: c.primary }]}>Back to sign in</Text>
+          <Text style={StyleSheet.flatten([styles.footer, { color: c.primary }])}>Back to sign in</Text>
         </Link>
       </View>
     </KeyboardAvoidingView>

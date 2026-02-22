@@ -1,8 +1,7 @@
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
+  getAuth,
   initializeAuth,
-  // @ts-ignore
-  getReactNativePersistence,
   Auth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -12,7 +11,7 @@ import {
   User as FirebaseUser,
   UserCredential,
 } from 'firebase/auth';
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -24,18 +23,26 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 
 export function getFirebaseAuth(): Auth | null {
   if (auth) return auth;
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId) return null;
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
+
+  const app: FirebaseApp = getApps().length
+    ? getApp()
+    : initializeApp(firebaseConfig);
+
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    const { getReactNativePersistence } = require('firebase/auth'); // ✅
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default; // ✅
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
   }
-  auth = initializeAuth(app!, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-  });
+
   return auth;
 }
 

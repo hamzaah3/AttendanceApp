@@ -69,7 +69,7 @@ export default function RegisterScreen() {
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign Up</Text>}
         </TouchableOpacity>
         <Link href="/login" asChild>
-          <Text style={[styles.footer, { color: c.text }]}>Already have an account? <Text style={{ color: c.primary }}>Sign in</Text></Text>
+          <Text style={StyleSheet.flatten([styles.footer, { color: c.text }])}>Already have an account? <Text style={{ color: c.primary }}>Sign in</Text></Text>
         </Link>
       </View>
     </KeyboardAvoidingView>

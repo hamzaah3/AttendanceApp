@@ -4,10 +4,21 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/context/AuthContext';
+
+// Suppress react-native-web deprecation: props.pointerEvents → style.pointerEvents (used internally by RNW)
+if (Platform.OS === 'web' && typeof console.warn === 'function') {
+  const orig = console.warn;
+  console.warn = (...args: unknown[]) => {
+    const msg = args.map((a) => (typeof a === 'string' ? a : '')).join(' ');
+    if (msg.includes('pointerEvents') && msg.includes('deprecated')) return;
+    orig.apply(console, args);
+  };
+}
 
 export {
   ErrorBoundary,

@@ -54,13 +54,13 @@ export default function LoginScreen() {
           secureTextEntry
         />
         <Link href="/forgot-password" asChild>
-          <Text style={[styles.link, { color: c.primary }]}>Forgot password?</Text>
+          <Text style={StyleSheet.flatten([styles.link, { color: c.primary }])}>Forgot password?</Text>
         </Link>
         <TouchableOpacity style={[styles.button, { backgroundColor: c.primary }]} onPress={handleLogin} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
         </TouchableOpacity>
         <Link href="/register" asChild>
-          <Text style={[styles.footer, { color: c.text }]}>Don't have an account? <Text style={{ color: c.primary }}>Sign up</Text></Text>
+          <Text style={StyleSheet.flatten([styles.footer, { color: c.text }])}>Don't have an account? <Text style={{ color: c.primary }}>Sign up</Text></Text>
         </Link>
       </View>
     </KeyboardAvoidingView>
