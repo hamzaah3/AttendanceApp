@@ -4,9 +4,14 @@
  * POST – create or update user (body: user)
  */
 import * as mongo from '@/lib/mongodbServer';
+import { corsPreflight, withCors } from '@/lib/cors';
 
 function getUserId(request: Request): string | null {
   return request.headers.get('X-User-Id') ?? request.headers.get('X-Firebase-Uid') ?? null;
+}
+
+export function OPTIONS() {
+  return corsPreflight();
 }
 
 export async function GET(request: Request) {
@@ -14,13 +19,13 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const firebaseUid = url.searchParams.get('firebaseUid') ?? getUserId(request);
     if (!firebaseUid) {
-      return Response.json({ error: 'Missing firebaseUid' }, { status: 400 });
+      return withCors(Response.json({ error: 'Missing firebaseUid' }, { status: 400 }), request);
     }
     const user = await mongo.mongoGetUserByFirebaseUid(firebaseUid);
-    return Response.json(user ?? null);
+    return withCors(Response.json(user ?? null), request);
   } catch (e) {
     console.error(e);
-    return Response.json({ error: e instanceof Error ? e.message : 'Server error' }, { status: 500 });
+    return withCors(Response.json({ error: e instanceof Error ? e.message : 'Server error' }, { status: 500 }), request);
   }
 }
 
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { firebaseUid, name, email, committedHoursPerDay = 8, weeklyOffDays = ['Saturday', 'Sunday'], timezone } = body;
     if (!firebaseUid || !email) {
-      return Response.json({ error: 'Missing firebaseUid or email' }, { status: 400 });
+      return withCors(Response.json({ error: 'Missing firebaseUid or email' }, { status: 400 }), request);
     }
     const user = await mongo.mongoCreateOrUpdateUser({
       firebaseUid,
@@ -39,9 +44,9 @@ export async function POST(request: Request) {
       weeklyOffDays: Array.isArray(weeklyOffDays) ? weeklyOffDays : ['Saturday', 'Sunday'],
       timezone: timezone ?? 'UTC',
     });
-    return Response.json(user);
+    return withCors(Response.json(user), request);
   } catch (e) {
     console.error(e);
-    return Response.json({ error: e instanceof Error ? e.message : 'Server error' }, { status: 500 });
+    return withCors(Response.json({ error: e instanceof Error ? e.message : 'Server error' }, { status: 500 }), request);
   }
 }
