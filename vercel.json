@@ -1,12 +1,12 @@
 {
-  "buildCommand": "expo export -p web",
+  "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
-  "devCommand": "expo",
-  "cleanUrls": true,
+  "devCommand": "expo start --web",
+  "installCommand": "npm install",
   "framework": null,
   "rewrites": [
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "destination": "/"
     }
   ]
