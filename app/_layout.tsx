@@ -3,12 +3,13 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { AppState, Platform } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/context/AuthContext';
+import { processSyncQueue } from '@/services/data';
 
 // Suppress react-native-web deprecation: props.pointerEvents → style.pointerEvents (used internally by RNW)
 if (Platform.OS === 'web' && typeof console.warn === 'function') {
@@ -59,6 +60,18 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    processSyncQueue();
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        processSyncQueue();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

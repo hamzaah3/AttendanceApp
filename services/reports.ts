@@ -69,7 +69,12 @@ export function buildReportSummary(
   roundRule: 'none' | '5' | '10' = 'none'
 ): ReportSummary {
   const dates = getDatesInRange(startDate, endDate);
-  const attendanceByDate = new Map(attendances.filter((a) => a.userId === userId).map((a) => [a.date, a]));
+  const userAttendances = attendances.filter((a) => a.userId === userId);
+  const workedByDate = new Map<string, number>();
+  for (const a of userAttendances) {
+    const prev = workedByDate.get(a.date) ?? 0;
+    workedByDate.set(a.date, prev + (a.totalWorkedMinutes ?? 0));
+  }
   let totalWorked = 0;
   let totalCommitted = 0;
   let overtime = 0;
@@ -81,8 +86,9 @@ export function buildReportSummary(
 
   for (const date of dates) {
     const committed = getCommittedMinutesForDate(user, date, holidays, commitmentHistory);
-    const att = attendanceByDate.get(date) ?? null;
-    const stats = buildDayStats(date, att, committed, roundRule);
+    const worked = workedByDate.get(date) ?? 0;
+    const att = worked > 0 ? { totalWorkedMinutes: worked } : null;
+    const stats = buildDayStats(date, att as Attendance | null, committed, roundRule);
     days.push(stats);
     totalWorked += stats.workedMinutes;
     totalCommitted += stats.committedMinutes;

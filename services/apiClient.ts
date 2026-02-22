@@ -92,9 +92,9 @@ export async function apiGetAttendanceByUser(userId: string): Promise<Attendance
   });
 }
 
-export async function apiGetAttendanceByUserAndDate(userId: string, date: string): Promise<Attendance | null> {
-  const doc = await apiFetch<unknown>(`/api/attendance?userId=${encodeURIComponent(userId)}&date=${encodeURIComponent(date)}`);
-  return doc as Attendance | null;
+export async function apiGetAttendancesByUserAndDate(userId: string, date: string): Promise<Attendance[]> {
+  const list = await apiFetch<Attendance[]>(`/api/attendance?userId=${encodeURIComponent(userId)}&date=${encodeURIComponent(date)}`);
+  return Array.isArray(list) ? list : [];
 }
 
 export async function apiCreateAttendance(
@@ -111,7 +111,7 @@ export async function apiCreateAttendance(
   });
 }
 
-export async function apiUpdateAttendance(id: string, updates: Partial<Pick<Attendance, 'checkInTime' | 'checkOutTime' | 'notes'>>): Promise<Attendance | null> {
+export async function apiUpdateAttendance(id: string, updates: Partial<Pick<Attendance, 'checkInTime' | 'checkOutTime' | 'notes' | 'isManual'>>): Promise<Attendance | null> {
   return apiFetch<Attendance | null>('/api/attendance', {
     method: 'PATCH',
     body: JSON.stringify({ id, ...updates }),

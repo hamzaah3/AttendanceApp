@@ -22,6 +22,7 @@ import {
 import type { Attendance } from '@/types';
 
 const THREE_MONTHS_AGO = dayjs().subtract(3, 'month').format('YYYY-MM-DD');
+const TODAY = dayjs().format('YYYY-MM-DD');
 
 export default function ManualEntryScreen() {
   const { dbUser } = useAuth();
@@ -29,9 +30,9 @@ export default function ManualEntryScreen() {
   const c = Colors[scheme];
   const [list, setList] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [selectedDate, setSelectedDate] = useState(TODAY);
   const [checkIn, setCheckIn] = useState('09:00');
-  const [checkOut, setCheckOut] = useState('17:00');
+  const [checkOut, setCheckOut] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,15 +45,27 @@ export default function ManualEntryScreen() {
     });
   }, [dbUser]);
 
-  const existing = list.find((a) => a.date === selectedDate);
+  const editingSession = editingId ? list.find((a) => a._id === editingId) : null;
   const canEditPast = selectedDate >= THREE_MONTHS_AGO;
+  const isToday = selectedDate === TODAY;
+  const isNewEntry = !editingId;
+  const canCheckInOnly = isToday && isNewEntry;
+  const canCheckOutOnly = isToday && !!editingSession && !editingSession.checkOutTime;
 
   function openEdit(att: Attendance) {
     setSelectedDate(att.date);
     setCheckIn(att.checkInTime);
-    setCheckOut(att.checkOutTime ?? '17:00');
+    setCheckOut(att.checkOutTime ?? '');
     setNotes(att.notes ?? '');
     setEditingId(att._id);
+  }
+
+  function clearForm() {
+    setSelectedDate(TODAY);
+    setCheckIn(dayjs().format('HH:mm'));
+    setCheckOut('');
+    setNotes('');
+    setEditingId(null);
   }
 
   async function handleSave() {
@@ -61,15 +74,22 @@ export default function ManualEntryScreen() {
       Alert.alert('Restriction', 'Cannot add or edit entries older than 3 months.');
       return;
     }
+    const checkOutTrimmed = checkOut.trim();
+    const hasCheckOut = checkOutTrimmed.length > 0;
     const ci = dayjs(`${selectedDate}T${checkIn}`);
-    const co = dayjs(`${selectedDate}T${checkOut}`);
-    if (co.isBefore(ci) || co.isSame(ci)) {
-      Alert.alert('Invalid times', 'Check-out must be after check-in.');
-      return;
-    }
-    const minutes = co.diff(ci, 'minute');
-    if (minutes > 24 * 60) {
-      Alert.alert('Invalid times', 'Worked time cannot exceed 24 hours.');
+
+    if (hasCheckOut) {
+      const co = dayjs(`${selectedDate}T${checkOutTrimmed}`);
+      if (co.isBefore(ci) || co.isSame(ci)) {
+        Alert.alert('Invalid times', 'Check-out must be after check-in.');
+        return;
+      }
+      if (co.diff(ci, 'minute') > 24 * 60) {
+        Alert.alert('Invalid times', 'Worked time cannot exceed 24 hours.');
+        return;
+      }
+    } else if (!canCheckInOnly && !canCheckOutOnly) {
+      Alert.alert('Invalid', 'Check-out time is required for this entry.');
       return;
     }
 
@@ -78,23 +98,27 @@ export default function ManualEntryScreen() {
       if (editingId) {
         const updated = await updateAttendance(editingId, {
           checkInTime: checkIn,
-          checkOutTime: checkOut,
+          checkOutTime: hasCheckOut ? checkOutTrimmed : undefined,
           notes: notes || undefined,
+          isManual: true,
         });
         if (updated) {
           setList((prev) => prev.map((a) => (a._id === editingId ? updated : a)));
-          setEditingId(null);
-          Alert.alert('Saved', 'Entry updated.');
+          clearForm();
+          Alert.alert('Saved', hasCheckOut ? 'Entry updated.' : 'Check-out added.');
         }
       } else {
-        if (existing) {
-          Alert.alert('Conflict', 'An entry already exists for this date. Edit it instead.');
-          setSaving(false);
-          return;
-        }
-        const created = await createAttendance(dbUser._id, selectedDate, checkIn, checkOut, notes || undefined, true);
+        const created = await createAttendance(
+          dbUser._id,
+          selectedDate,
+          checkIn,
+          hasCheckOut ? checkOutTrimmed : undefined,
+          notes || undefined,
+          true
+        );
         setList((prev) => [created, ...prev]);
-        Alert.alert('Saved', 'Manual entry added.');
+        clearForm();
+        Alert.alert('Saved', hasCheckOut ? 'Manual entry added.' : 'Manual check-in added. Home timer will use this time. Add check-out here when you leave.');
       }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Save failed');
@@ -144,21 +168,31 @@ export default function ManualEntryScreen() {
         placeholderTextColor={c.muted}
       />
 
+      {isToday && (canCheckInOnly || canCheckOutOnly) && (
+        <Text style={[styles.hint, { color: c.muted }]}>
+          {canCheckInOnly
+            ? 'Add only check-in now; the home timer will use this time. Add check-out here later when you leave.'
+            : 'Add your check-out time. Home will show today as complete.'}
+        </Text>
+      )}
+
       <Text style={[styles.sectionLabel, { color: c.muted }]}>Check-in time</Text>
       <TextInput
         style={[styles.input, { backgroundColor: c.card, borderColor: c.border, color: c.text }]}
         value={checkIn}
         onChangeText={setCheckIn}
-        placeholder="HH:mm"
+        placeholder="HH:mm (e.g. 12:00)"
         placeholderTextColor={c.muted}
       />
 
-      <Text style={[styles.sectionLabel, { color: c.muted }]}>Check-out time</Text>
+      <Text style={[styles.sectionLabel, { color: c.muted }]}>
+        Check-out time {canCheckInOnly || canCheckOutOnly ? '(optional for today)' : ''}
+      </Text>
       <TextInput
         style={[styles.input, { backgroundColor: c.card, borderColor: c.border, color: c.text }]}
         value={checkOut}
         onChangeText={setCheckOut}
-        placeholder="HH:mm"
+        placeholder={canCheckOutOnly ? 'HH:mm (e.g. 22:00 when you left)' : 'HH:mm or leave empty for check-in only'}
         placeholderTextColor={c.muted}
       />
 
@@ -208,6 +242,7 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   sectionLabel: { fontSize: 14, marginBottom: 8 },
+  hint: { fontSize: 13, marginBottom: 16 },
   input: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 16, fontSize: 16 },
   notesInput: { minHeight: 80, textAlignVertical: 'top' },
   warn: { fontSize: 12, marginBottom: 12 },

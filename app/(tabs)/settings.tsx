@@ -155,6 +155,7 @@ export default function SettingsScreen() {
         onChangeText={setCommittedHours}
         keyboardType="decimal-pad"
         placeholder="8"
+        placeholderTextColor={c.muted}
       />
       <TouchableOpacity style={[styles.saveBtn, { backgroundColor: c.primary }]} onPress={saveCommittedHours} disabled={saving}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
@@ -178,12 +179,14 @@ export default function SettingsScreen() {
         value={newHolidayDate}
         onChangeText={setNewHolidayDate}
         placeholder="YYYY-MM-DD"
+        placeholderTextColor={c.muted}
       />
       <TextInput
         style={[styles.input, { backgroundColor: c.card, borderColor: c.border, color: c.text }]}
         value={newHolidayTitle}
         onChangeText={setNewHolidayTitle}
         placeholder="Title (e.g. Eid, National Day)"
+        placeholderTextColor={c.muted}
       />
       <TouchableOpacity style={[styles.addBtn, { borderColor: c.primary }]} onPress={addHolidayPress}>
         <Text style={[styles.addBtnText, { color: c.primary }]}>Add holiday</Text>
@@ -219,6 +222,7 @@ export default function SettingsScreen() {
             value={checkInReminder}
             onChangeText={setCheckInReminder}
             onBlur={saveReminders}
+            placeholderTextColor={c.muted}
           />
           <Text style={[styles.smallLabel, { color: c.muted }]}>Remind if not checked out by</Text>
           <TextInput
@@ -226,6 +230,7 @@ export default function SettingsScreen() {
             value={checkOutReminder}
             onChangeText={setCheckOutReminder}
             onBlur={saveReminders}
+            placeholderTextColor={c.muted}
           />
         </>
       )}

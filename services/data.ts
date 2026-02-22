@@ -1,8 +1,14 @@
 import dayjs from 'dayjs';
 import type { User, Attendance, Holiday, CommitmentHistory, Weekday } from '@/types';
-import { getItem, setItem } from '@/lib/storage';
+import { getItem, setItem, getSyncQueue, addToSyncQueue, setSyncQueue } from '@/lib/storage';
+import type { QueuedAction } from '@/lib/storage';
 import { isApiRoutesConfigured } from './apiClient';
 import * as api from './apiClient';
+
+function isLikelyNetworkError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /network|fetch|failed to load|timeout|offline/i.test(msg);
+}
 
 const USERS_KEY = 'users';
 const ATTENDANCE_KEY = 'attendance';
@@ -66,15 +72,47 @@ export async function getAttendanceList(): Promise<Attendance[]> {
 }
 
 export async function getAttendanceByUser(userId: string): Promise<Attendance[]> {
-  if (useApi()) return api.apiGetAttendanceByUser(userId);
-  const list = await getAttendanceList();
-  return list.filter((a) => a.userId === userId).sort((a, b) => b.date.localeCompare(a.date));
+  if (!useApi()) {
+    const list = await getAttendanceList();
+    return list.filter((a) => a.userId === userId).sort((a, b) => b.date.localeCompare(a.date));
+  }
+  try {
+    const serverList = await api.apiGetAttendanceByUser(userId);
+    const queue = await getSyncQueue();
+    const localList = (await getItem<Attendance[]>(ATTENDANCE_KEY)) ?? [];
+    const unsyncedLocalIds = new Set(
+      queue.filter((q) => q.type === 'attendance' && (q.payload as { localId?: string })?.localId).map((q) => (q.payload as { localId: string }).localId)
+    );
+    const unsynced = localList.filter((a) => a.userId === userId && unsyncedLocalIds.has(a._id));
+    const merged = [...serverList];
+    for (const u of unsynced) {
+      if (!merged.some((m) => m.date === u.date)) merged.push(u);
+    }
+    const otherUsers = localList.filter((a) => a.userId !== userId);
+    await setItem(ATTENDANCE_KEY, [...otherUsers, ...merged]);
+    return merged.sort((a, b) => b.date.localeCompare(a.date));
+  } catch {
+    const list = await getAttendanceList();
+    return list.filter((a) => a.userId === userId).sort((a, b) => b.date.localeCompare(a.date));
+  }
 }
 
-export async function getAttendanceByUserAndDate(userId: string, date: string): Promise<Attendance | null> {
-  if (useApi()) return api.apiGetAttendanceByUserAndDate(userId, date);
-  const list = await getAttendanceByUser(userId);
-  return list.find((a) => a.date === date) ?? null;
+/** Returns all sessions for the given user and date (multiple check-in/out per day). */
+export async function getAttendancesByUserAndDate(userId: string, date: string): Promise<Attendance[]> {
+  if (!useApi()) {
+    const list = await getAttendanceByUser(userId);
+    return list.filter((a) => a.date === date).sort((a, b) => a.checkInTime.localeCompare(b.checkInTime));
+  }
+  try {
+    const list = await api.apiGetAttendancesByUserAndDate(userId, date);
+    const localList = (await getItem<Attendance[]>(ATTENDANCE_KEY)) ?? [];
+    const next = localList.filter((a) => !(a.userId === userId && a.date === date));
+    await setItem(ATTENDANCE_KEY, [...next, ...list]);
+    return list;
+  } catch {
+    const list = await getAttendanceList();
+    return list.filter((a) => a.userId === userId && a.date === date).sort((a, b) => a.checkInTime.localeCompare(b.checkInTime));
+  }
 }
 
 export async function createAttendance(
@@ -85,21 +123,27 @@ export async function createAttendance(
   notes?: string,
   isManual = false
 ): Promise<Attendance> {
-  if (useApi()) return api.apiCreateAttendance(userId, date, checkInTime, checkOutTime, notes, isManual);
-  const list = await getAttendanceList();
-  const existing = list.find((a) => a.userId === userId && a.date === date);
-  if (existing) throw new Error('Attendance already exists for this date');
-
   const checkIn = dayjs(`${date}T${checkInTime}`);
   const checkOut = checkOutTime ? dayjs(`${date}T${checkOutTime}`) : null;
-  let totalWorkedMinutes = 0;
-  if (checkOut) {
-    totalWorkedMinutes = Math.max(0, checkOut.diff(checkIn, 'minute'));
-  }
+  const totalWorkedMinutes = checkOut ? Math.max(0, checkOut.diff(checkIn, 'minute')) : 0;
   const status: Attendance['status'] = checkOut ? (isManual ? 'manual' : 'complete') : 'incomplete';
 
+  if (useApi()) {
+    try {
+      const att = await api.apiCreateAttendance(userId, date, checkInTime, checkOutTime, notes, isManual);
+      const list = (await getItem<Attendance[]>(ATTENDANCE_KEY)) ?? [];
+      await setItem(ATTENDANCE_KEY, [...list, att]);
+      return att;
+    } catch (e) {
+      if (!isLikelyNetworkError(e)) throw e;
+    }
+  }
+
+  const list = await getAttendanceList();
+
+  const localId = id();
   const att: Attendance = {
-    _id: id(),
+    _id: localId,
     userId,
     date,
     checkInTime,
@@ -111,14 +155,19 @@ export async function createAttendance(
     createdAt: dayjs().toISOString(),
   };
   await setItem(ATTENDANCE_KEY, [...list, att]);
+  if (useApi()) {
+    await addToSyncQueue({
+      type: 'attendance',
+      payload: { action: 'create', localId, userId, date, checkInTime, checkOutTime, notes, isManual },
+    });
+  }
   return att;
 }
 
 export async function updateAttendance(
   id: string,
-  updates: Partial<Pick<Attendance, 'checkInTime' | 'checkOutTime' | 'notes'>>
+  updates: Partial<Pick<Attendance, 'checkInTime' | 'checkOutTime' | 'notes' | 'isManual'>>
 ): Promise<Attendance | null> {
-  if (useApi()) return api.apiUpdateAttendance(id, updates);
   const list = await getAttendanceList();
   const idx = list.findIndex((a) => a._id === id);
   if (idx === -1) return null;
@@ -135,10 +184,28 @@ export async function updateAttendance(
     ...updates,
     totalWorkedMinutes,
     status,
-    isManual: true,
+    isManual: updates.isManual ?? att.isManual,
   };
+
+  if (useApi()) {
+    try {
+      const result = await api.apiUpdateAttendance(id, updates);
+      list[idx] = result ?? updated;
+      await setItem(ATTENDANCE_KEY, list);
+      return result ?? updated;
+    } catch (e) {
+      if (!isLikelyNetworkError(e)) throw e;
+    }
+  }
+
   list[idx] = updated;
   await setItem(ATTENDANCE_KEY, list);
+  if (useApi()) {
+    await addToSyncQueue({
+      type: 'attendance',
+      payload: { action: 'update', id, updates },
+    });
+  }
   return updated;
 }
 
@@ -207,4 +274,54 @@ export function getCommittedMinutesForDate(
   const effective = sorted.find((c) => c.effectiveFromDate <= date);
   const hours = effective ? effective.hoursPerDay : user.committedHoursPerDay;
   return hours * 60;
+}
+
+// --- Offline sync: process queued actions when back online ---
+export async function processSyncQueue(): Promise<void> {
+  if (!useApi()) return;
+  const queue = await getSyncQueue();
+  if (queue.length === 0) return;
+  const localList = (await getItem<Attendance[]>(ATTENDANCE_KEY)) ?? [];
+  let list = [...localList];
+  const remaining: QueuedAction[] = [];
+  const localToServer: Record<string, string> = {};
+
+  for (const item of queue) {
+    if (item.type !== 'attendance') {
+      remaining.push(item);
+      continue;
+    }
+    const payload = item.payload as { action: string; localId?: string; id?: string; userId?: string; date?: string; checkInTime?: string; checkOutTime?: string; notes?: string; isManual?: boolean; updates?: Partial<Pick<Attendance, 'checkInTime' | 'checkOutTime' | 'notes'>> };
+    try {
+      if (payload.action === 'create' && payload.localId && payload.userId && payload.date && payload.checkInTime !== undefined) {
+        const att = await api.apiCreateAttendance(
+          payload.userId,
+          payload.date,
+          payload.checkInTime,
+          payload.checkOutTime,
+          payload.notes,
+          payload.isManual ?? false
+        );
+        localToServer[payload.localId] = att._id;
+        const idx = list.findIndex((a) => a._id === payload.localId);
+        if (idx >= 0) list[idx] = att;
+        else list.push(att);
+      } else if (payload.action === 'update' && payload.id && payload.updates) {
+        const recordId = localToServer[payload.id] ?? payload.id;
+        const record = list.find((a) => a._id === recordId || a._id === payload.id);
+        if (record) {
+          const updated = await api.apiUpdateAttendance(record._id, payload.updates);
+          if (updated) {
+            const i = list.findIndex((a) => a._id === record._id);
+            if (i >= 0) list[i] = updated;
+          }
+        }
+      }
+    } catch {
+      remaining.push(item);
+    }
+  }
+
+  await setItem(ATTENDANCE_KEY, list);
+  await setSyncQueue(remaining);
 }
